@@ -1,0 +1,107 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String         @id @unique // User's wallet address
+  trades        Trade[]
+  totalTrades   Int            @default(0)
+  totalVolume   BigInt         @default(0)
+  tradesFrom    Trade[]        @relation("From")
+  tradesTo      Trade[]        @relation("To")
+  notifications Notification[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([createdAt])
+}
+
+model Trade {
+  id        Int         @id @default(autoincrement())
+  fromID    String // Sender's address
+  toID      String // Recipient's address
+  price     BigInt // Price of the asset
+  amount    BigInt // Transaction amount
+  tick      Int // Block number/tick when transaction occurred
+  assetID   Int // Asset's unique identifier
+  userID    String?
+  txHash    String // Unique transaction identifier
+  fee       BigInt? // Transaction fee
+  type      TradeType // Type of trade
+  status    TradeStatus // Status of the trade
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  User      User?       @relation(fields: [userID], references: [id])
+  Asset     Asset?      @relation(fields: [assetID], references: [id])
+  From      User?       @relation("From", fields: [fromID], references: [id])
+  To        User?       @relation("To", fields: [toID], references: [id])
+
+  @@index([fromID, tick])
+  @@index([toID, tick])
+  @@index([createdAt])
+}
+
+model TradeSummary {
+  date                   DateTime @id @default(now())
+  totalTrades            Int      @default(0)
+  totalVolume            BigInt   @default(0)
+  totalFees              BigInt   @default(0)
+  totalAssetsIssued      Int      @default(0)
+  totalAssetsTransferred Int      @default(0)
+  totalAssetsTraded      Int      @default(0)
+}
+
+model PriceData {
+  id        Int    @id @default(autoincrement())
+  assetID   Int // Foreign key to Asset
+  interval  String // e.g., '4h', '24h', '1w', '1m', '1y'
+  startTime Int // Start of the interval
+  open      BigInt // Opening price
+  high      BigInt // Highest price
+  low       BigInt // Lowest price
+  close     BigInt // Closing price
+  volume    BigInt // Total volume traded
+  Asset     Asset? @relation(fields: [assetID], references: [id])
+
+  @@index([assetID, interval, startTime])
+}
+
+model Asset {
+  id        Int         @id @default(autoincrement()) // Asset's unique identifier
+  name      String // Asset's name (e.g. CFB)
+  issuer    String // Asset's issuer (e.g. CFBMEMZOIDEXQAUXYYSZIURADQLAPWPMNJXQSNVQZAHYVOPYUKKJBJUCTVJL)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  Trade     Trade[]
+  PriceData PriceData[]
+
+  @@unique([name, issuer])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userID    String
+  title     String?
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  User      User     @relation(fields: [userID], references: [id])
+}
+
+enum TradeType {
+  BUY
+  SELL
+  TRANSFER
+  ISSUE
+}
+
+enum TradeStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
