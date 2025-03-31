@@ -49,13 +49,13 @@ const decodeQXTradeLog = async (eventData: string) => {
   const issuer = await values.getID(8);
   const assetName = values.getUint64(40);
   const price = values.getUint64(48);
-  const numberOfShares = values.getUint64(56);
+  const amount = values.getUint64(56);
 
   return {
     issuer,
     assetName: assetNameDecode(assetName),
     price: Number(price),
-    numberOfShares: Number(numberOfShares)
+    amount: Number(amount)
   };
 };
 
@@ -66,7 +66,7 @@ const decodeTransferAssetOwnershipLog = async (eventData: string) => {
   const fromID = await values.getID(0);
   const toID = await values.getID(32);
   const issuer = await values.getID(64);
-  const numberOfShares = values.getUint64(96);
+  const amount = values.getUint64(96);
   const assetName = values.getUint64(104);
   // const numberOfDecimalPlaces = values.getUint32(112);
   // const unitOfMeasurement = values.getUint64(120);
@@ -76,7 +76,7 @@ const decodeTransferAssetOwnershipLog = async (eventData: string) => {
     toID,
     issuer,
     assetName: assetNameDecode(assetName),
-    numberOfShares: Number(numberOfShares),
+    amount: Number(amount)
     // numberOfDecimalPlaces,
     // unitOfMeasurement
   };
