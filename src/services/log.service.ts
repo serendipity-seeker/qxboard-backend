@@ -82,6 +82,25 @@ const decodeTransferAssetOwnershipLog = async (eventData: string) => {
   };
 };
 
+const decodeIssueAssetLog = async (eventData: string) => {
+  const values = getResponseValues(eventData);
+  if (!values) return null;
+
+  const issuer = await values.getID(0);
+  const amount = values.getUint64(32);
+  const assetName = values.getUint64(40);
+  // const numberOfDecimalPlaces = values.getUint32(48);
+  // const unitOfMeasurement = values.getUint64(56);
+
+  return {
+    issuer,
+    assetName: assetNameDecode(assetName),
+    amount: Number(amount)
+    // numberOfDecimalPlaces,
+    // unitOfMeasurement
+  };
+};
+
 const decodeQXLog = async (log: TickEvents) => {
   const result: any[] = [];
 
