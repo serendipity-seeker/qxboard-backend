@@ -1,7 +1,7 @@
 import { IEvent, TickEvents } from "../types";
-import { base64ToUint8Array, getResponseValues } from "../utils";
+import { base64ToUint8Array, getResponseValues, assetNameDecode } from "../utils";
 
-const CONTRACT_INDEX = 12;
+const CONTRACT_INDEX = 1;
 
 enum EventType {
   QU_TRANSFER = 0,
@@ -42,18 +42,47 @@ const decodeLogHeader = (eventData: string) => {
   return { contractIdx: SCIdx, logType: eventType };
 };
 
-const decodeLogBody = (eventData: string, logType: number) => {
+const decodeQXTradeLog = async (eventData: string) => {
   const values = getResponseValues(eventData);
+  if (!values) return null;
 
-  const issuer = values?.getID(0);
-  const assetName = values?.getUint64(32);
-  const price = values?.getUint64(40);
-  const numberOfShares = values?.getUint64(48);
+  const issuer = await values.getID(8);
+  const assetName = values.getUint64(40);
+  const price = values.getUint64(48);
+  const numberOfShares = values.getUint64(56);
 
-  return { issuer, assetName, price, numberOfShares };
+  return {
+    issuer,
+    assetName: assetNameDecode(assetName),
+    price: Number(price),
+    numberOfShares: Number(numberOfShares)
+  };
 };
 
-const decodeQXTradeLog = async (log: TickEvents) => {
+const decodeTransferAssetOwnershipLog = async (eventData: string) => {
+  const values = getResponseValues(eventData);
+  if (!values) return null;
+
+  const fromID = await values.getID(0);
+  const toID = await values.getID(32);
+  const issuer = await values.getID(64);
+  const numberOfShares = values.getUint64(96);
+  const assetName = values.getUint64(104);
+  // const numberOfDecimalPlaces = values.getUint32(112);
+  // const unitOfMeasurement = values.getUint64(120);
+
+  return {
+    fromID,
+    toID,
+    issuer,
+    assetName: assetNameDecode(assetName),
+    numberOfShares: Number(numberOfShares),
+    // numberOfDecimalPlaces,
+    // unitOfMeasurement
+  };
+};
+
+const decodeQXLog = async (log: TickEvents) => {
   const result: any[] = [];
 
   for (const tx of log.txEvents) {
@@ -64,20 +93,31 @@ const decodeQXTradeLog = async (log: TickEvents) => {
       const { contractIdx, logType } = decodeLogHeader(event.eventData);
       if (contractIdx !== CONTRACT_INDEX) continue;
 
-      const eventData = decodeLogBody(event.eventData, logType);
-
-      if (eventData) {
-        result.push({
-          tick: log.tick,
-          eventId: Number(event.header.eventId),
-          logType,
-          ...eventData
-        });
+      const qxTradeLog = await decodeQXTradeLog(event.eventData);
+      // if trade log exist in tx, there is transfer asset ownership log
+      const transferAssetOwnershipTxEvent = tx.events.find(
+        (event) => event.eventType === EventType.ASSET_POSSESSION_CHANGE
+      );
+      let transferAssetOwnershipLog = null;
+      if (transferAssetOwnershipTxEvent) {
+        console.log(transferAssetOwnershipTxEvent.eventData);
+        transferAssetOwnershipLog = await decodeTransferAssetOwnershipLog(
+          transferAssetOwnershipTxEvent.eventData
+        );
       }
+
+      result.push({
+        tick: log.tick,
+        txHash: tx.txId,
+        eventId: Number(event.header.eventId),
+        logType,
+        ...qxTradeLog,
+        ...transferAssetOwnershipLog
+      });
     }
   }
 
   return result;
 };
 
-export { decodeQXTradeLog };
+export { decodeQXLog };

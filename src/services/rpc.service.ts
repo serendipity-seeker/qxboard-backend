@@ -16,6 +16,7 @@ import { uint8ArrayToBase64 } from "../utils";
 import axios from "axios";
 
 const RPC_URL = "https://rpc.qubic.org";
+const API_URL = "https://api.qubic.org";
 
 const rpc = axios.create({
   baseURL: RPC_URL,
@@ -202,6 +203,6 @@ export const fetchTransactionInfo = async (txHash: string): Promise<TransactionI
 };
 
 export const fetchTickEvents = async (tick: number): Promise<TickEvents> => {
-  const tickEventsResult = await rpc.post(`${RPC_URL}/v1/events/getTickEvents`, { tick });
+  const tickEventsResult = await rpc.post(`${API_URL}/v1/events/getTickEvents`, { tick });
   return tickEventsResult.data;
 };

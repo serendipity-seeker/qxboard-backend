@@ -14,13 +14,41 @@ export const base64ToUint8Array = (base64: string): Uint8Array => {
 
 export const getResponseValues = (responseData: string) => {
   if (!responseData) return null;
-  const responseView = new DataView(base64ToUint8Array(responseData).buffer);
   const responseArray = base64ToUint8Array(responseData);
+  const responseView = new DataView(responseArray.buffer);
 
   return {
-    getUint64: (offset: number) => Number(responseView.getBigUint64(offset, true)),
+    getUint64: (offset: number) => BigInt(responseView.getBigUint64(offset, true)),
     getUint32: (offset: number) => responseView.getUint32(offset, true),
     getUint8: (offset: number) => responseView.getUint8(offset),
-    getID: (offset: number) => qHelper.getIdentity(responseArray.slice(offset, offset + 32))
+    getID: async (offset: number) =>
+      await qHelper.getIdentity(responseArray.slice(offset, offset + 32))
   };
+};
+
+export const assetNameConvert = (input: string): bigint => {
+  if (input.length > 7) {
+    throw new Error("Input string is too long");
+  }
+  const buffer = new ArrayBuffer(8);
+  const view = new DataView(buffer);
+  for (let i = 0; i < Math.min(input.length, 8); i++) {
+    view.setUint8(i, input.charCodeAt(i));
+  }
+  return BigInt(view.getBigUint64(0, true));
+};
+
+export const assetNameDecode = (input: bigint): string => {
+  const buffer = new ArrayBuffer(8);
+  const view = new DataView(buffer);
+  view.setBigUint64(0, input, true);
+
+  let result = "";
+  for (let i = 0; i < 8; i++) {
+    const charCode = view.getUint8(i);
+    if (charCode !== 0) {
+      result += String.fromCharCode(charCode);
+    }
+  }
+  return result;
 };
