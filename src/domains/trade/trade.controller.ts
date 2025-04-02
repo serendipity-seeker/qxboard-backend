@@ -8,22 +8,22 @@ import userService from "../user/user.service";
 
 const createTrade = catchAsync(async (req, res) => {
   // Create user if they don't exist
-  const fromUser = req.body.fromID;
-  if (fromUser) {
-    const user = await userService.getUserById(fromUser);
+  const maker = req.body.maker;
+  if (maker) {
+    const user = await userService.getUserById(maker);
     if (!user) {
       await userService.createUser({
-        id: fromUser
+        id: maker
       });
     }
   }
 
-  const toUser = req.body.toID;
-  if (toUser) {
-    const user = await userService.getUserById(toUser);
+  const taker = req.body.taker;
+  if (taker) {
+    const user = await userService.getUserById(taker);
     if (!user) {
       await userService.createUser({
-        id: toUser
+        id: taker
       });
     }
   }
@@ -35,7 +35,7 @@ const createTrade = catchAsync(async (req, res) => {
 });
 
 const getTrades = catchAsync(async (req, res) => {
-  const filter = pick(req.query, ["fromID", "toID", "type", "assetID", "txHash", "tick", "status"]);
+  const filter = pick(req.query, ["maker", "taker", "assetID", "txHash", "tick"]);
   const options = pick(req.query, [
     "sortBy",
     "limit",
