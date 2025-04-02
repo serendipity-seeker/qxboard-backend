@@ -62,7 +62,9 @@ const getUserById = async (id: string): Promise<User | null> => {
     return await prisma.user.findUnique({
       where: { id },
       include: {
-        notifications: true
+        notifications: true,
+        makerTrades: true,
+        takerTrades: true
       }
     });
   } catch (error) {

@@ -1,7 +1,8 @@
 import httpStatus from "http-status";
-import { Trade, Prisma, TradeType, TradeStatus } from "@prisma/client";
+import { Trade, Prisma } from "@prisma/client";
 import ApiError from "../../utils/ApiError";
 import prisma from "../../client";
+import { SocketService } from "../../services/socket.service";
 
 /**
  * Create a trade
@@ -9,81 +10,39 @@ import prisma from "../../client";
  * @returns {Promise<Trade>}
  */
 const createTrade = async (createBody: {
-  type: TradeType;
-  fromID: string;
-  toID?: string;
+  maker?: string;
+  taker?: string;
   price: bigint;
   amount: bigint;
   tick: number;
   assetID: number;
   txHash: string;
   fee?: bigint;
-  status?: TradeStatus;
 }): Promise<Trade> => {
   try {
     // Create the trade
     const trade = await prisma.trade.create({
       data: {
-        ...createBody,
-        toID: createBody.toID || "",
-        status: createBody.status || TradeStatus.COMPLETED
+        maker: createBody.maker || "",
+        taker: createBody.taker || "",
+        price: createBody.price,
+        amount: createBody.amount,
+        tick: createBody.tick,
+        assetID: createBody.assetID,
+        txHash: createBody.txHash
       },
       include: {
         Asset: true,
-        From: true,
-        To: true
+        Maker: true,
+        Taker: true
       }
     });
 
     if (!trade) throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Error creating trade");
 
-    // Update user statistics
-    if (createBody.fromID) {
-      await prisma.user.update({
-        where: { id: createBody.fromID },
-        data: {
-          totalTrades: { increment: 1 },
-          totalVolume: { increment: trade.price || BigInt(0) }
-        }
-      });
-    }
-
-    if (createBody.toID) {
-      await prisma.user.update({
-        where: { id: createBody.toID },
-        data: {
-          totalTrades: { increment: 1 },
-          totalVolume: { increment: trade.price || BigInt(0) }
-        }
-      });
-    }
-
-    // Update daily trade summary
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    await prisma.tradeSummary.upsert({
-      where: { date: today },
-      update: {
-        totalTrades: { increment: 1 },
-        totalVolume: { increment: trade.price || BigInt(0) },
-        totalFees: { increment: trade.fee || BigInt(0) },
-        ...(trade.type === TradeType.ISSUE && { totalAssetsIssued: { increment: 1 } }),
-        ...(trade.type === TradeType.TRANSFER && { totalAssetsTransferred: { increment: 1 } }),
-        ...((trade.type === TradeType.BUY || trade.type === TradeType.SELL) && {
-          totalAssetsTraded: { increment: 1 }
-        })
-      },
-      create: {
-        date: today,
-        totalTrades: 1,
-        totalVolume: trade.price || BigInt(0),
-        totalFees: trade.fee || BigInt(0),
-        totalAssetsIssued: trade.type === TradeType.ISSUE ? 1 : 0,
-        totalAssetsTransferred: trade.type === TradeType.TRANSFER ? 1 : 0,
-        totalAssetsTraded: trade.type === TradeType.BUY || trade.type === TradeType.SELL ? 1 : 0
-      }
-    });
+    // Emit trade event via socket
+    const socketService = SocketService.getInstance();
+    socketService.emitToAll("trade:new", trade);
 
     return trade;
   } catch (error) {
@@ -135,8 +94,8 @@ const queryTrades = async (
       },
       include: {
         Asset: details ? true : false,
-        From: details ? true : false,
-        To: details ? true : false
+        Maker: details ? true : false,
+        Taker: details ? true : false
       }
     });
   } catch (error) {
@@ -155,8 +114,8 @@ const getTradeByTxHash = async (txHash: string): Promise<Trade | null> => {
       where: { txHash },
       include: {
         Asset: true,
-        From: true,
-        To: true
+        Maker: true,
+        Taker: true
       }
     });
   } catch (error) {
@@ -188,12 +147,12 @@ const getUserTrades = async (userId: string): Promise<Trade[]> => {
   try {
     return await prisma.trade.findMany({
       where: {
-        OR: [{ fromID: userId }, { toID: userId }]
+        OR: [{ maker: userId }, { taker: userId }]
       },
       include: {
         Asset: true,
-        From: true,
-        To: true
+        Maker: true,
+        Taker: true
       },
       orderBy: {
         createdAt: "desc"

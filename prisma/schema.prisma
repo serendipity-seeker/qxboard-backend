@@ -9,11 +9,8 @@ generator client {
 
 model User {
   id            String         @id @unique // User's wallet address
-  trades        Trade[]
-  totalTrades   Int            @default(0)
-  totalVolume   BigInt         @default(0)
-  tradesFrom    Trade[]        @relation("From")
-  tradesTo      Trade[]        @relation("To")
+  makerTrades   Trade[]        @relation("Maker")
+  takerTrades   Trade[]        @relation("Taker")
   notifications Notification[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -22,63 +19,32 @@ model User {
 }
 
 model Trade {
-  id        Int         @id @default(autoincrement())
-  fromID    String // Sender's address
-  toID      String // Recipient's address
+  id        Int      @id @default(autoincrement())
+  maker     String // Sender's address
+  taker     String // Recipient's address
   price     BigInt // Price of the asset
   amount    BigInt // Transaction amount
-  tick      Int // Block number/tick when transaction occurred
+  tick      Int // tick when transaction occurred
   assetID   Int // Asset's unique identifier
-  userID    String?
   txHash    String // Unique transaction identifier
-  fee       BigInt? // Transaction fee
-  type      TradeType // Type of trade
-  status    TradeStatus // Status of the trade
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  User      User?       @relation(fields: [userID], references: [id])
-  Asset     Asset?      @relation(fields: [assetID], references: [id])
-  From      User?       @relation("From", fields: [fromID], references: [id])
-  To        User?       @relation("To", fields: [toID], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  Asset     Asset?   @relation(fields: [assetID], references: [id])
+  Maker     User?    @relation("Maker", fields: [maker], references: [id])
+  Taker     User?    @relation("Taker", fields: [taker], references: [id])
 
-  @@index([fromID, tick])
-  @@index([toID, tick])
+  @@index([maker, tick])
+  @@index([taker, tick])
   @@index([createdAt])
 }
 
-model TradeSummary {
-  date                   DateTime @id @default(now())
-  totalTrades            Int      @default(0)
-  totalVolume            BigInt   @default(0)
-  totalFees              BigInt   @default(0)
-  totalAssetsIssued      Int      @default(0)
-  totalAssetsTransferred Int      @default(0)
-  totalAssetsTraded      Int      @default(0)
-}
-
-model PriceData {
-  id        Int    @id @default(autoincrement())
-  assetID   Int // Foreign key to Asset
-  interval  String // e.g., '4h', '24h', '1w', '1m', '1y'
-  startTime Int // Start of the interval
-  open      BigInt // Opening price
-  high      BigInt // Highest price
-  low       BigInt // Lowest price
-  close     BigInt // Closing price
-  volume    BigInt // Total volume traded
-  Asset     Asset? @relation(fields: [assetID], references: [id])
-
-  @@index([assetID, interval, startTime])
-}
-
 model Asset {
-  id        Int         @id @default(autoincrement()) // Asset's unique identifier
+  id        Int      @id @default(autoincrement()) // Asset's unique identifier
   name      String // Asset's name (e.g. CFB)
   issuer    String // Asset's issuer (e.g. CFBMEMZOIDEXQAUXYYSZIURADQLAPWPMNJXQSNVQZAHYVOPYUKKJBJUCTVJL)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  Trade     Trade[]
-  PriceData PriceData[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trades    Trade[]
 
   @@unique([name, issuer])
 }
@@ -91,17 +57,4 @@ model Notification {
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
   User      User     @relation(fields: [userID], references: [id])
-}
-
-enum TradeType {
-  BUY
-  SELL
-  TRANSFER
-  ISSUE
-}
-
-enum TradeStatus {
-  PENDING
-  COMPLETED
-  FAILED
 }

@@ -4,11 +4,14 @@ import prisma from "./client";
 import config from "./config/config";
 import logger from "./config/logger";
 import { SocketService } from "./services/socket.service";
+import { indexer } from "./services/indexer.service";
 
 let server: Server;
 prisma.$connect().then(() => {
   logger.info("Connected to SQL Database");
   server = http.createServer(app);
+
+  // indexer.start();
 
   SocketService.getInstance(server);
 

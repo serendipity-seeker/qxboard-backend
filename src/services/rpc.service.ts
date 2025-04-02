@@ -115,7 +115,7 @@ export const fetchAssetsOwnership = async (publicId: string): Promise<AssetsOwne
 };
 
 export const broadcastTx = async (tx: Uint8Array) => {
-  const url = `${RPC_URL}/v1/broadcast-transaction`;
+  const url = `/v1/broadcast-transaction`;
   const txEncoded = uint8ArrayToBase64(tx);
   const body = { encodedTransaction: txEncoded };
   const result = await rpc.post(url, body);
@@ -124,12 +124,12 @@ export const broadcastTx = async (tx: Uint8Array) => {
 };
 
 export const fetchQuerySC = async (query: IQuerySC): Promise<IQuerySCResponse> => {
-  const queryResult = await rpc.post(`${RPC_URL}/v1/querySmartContract`, query);
+  const queryResult = await rpc.post(`/v1/querySmartContract`, query);
   return queryResult.data;
 };
 
 export const fetchTxStatus = async (txId: string): Promise<TxStatus> => {
-  const txStatusResult = await rpc.get(`${RPC_URL}/v1/tx-status/${txId}`);
+  const txStatusResult = await rpc.get(`/v1/tx-status/${txId}`);
   let txStatus = {} as { transactionStatus: TxStatus };
   if (txStatusResult.status == 200) {
     txStatus = await txStatusResult.data;
@@ -138,7 +138,7 @@ export const fetchTxStatus = async (txId: string): Promise<TxStatus> => {
 };
 
 export const fetchLatestStats = async (): Promise<LatestStats> => {
-  const latestStatsResult = await rpc.get(`${RPC_URL}/v1/latest-stats`);
+  const latestStatsResult = await rpc.get(`/v1/latest-stats`);
   if (latestStatsResult.status !== 200) {
     console.warn("fetchLatestStats: Failed to fetch latest stats");
     return {} as LatestStats;
@@ -152,7 +152,7 @@ export const fetchLatestStats = async (): Promise<LatestStats> => {
 };
 
 export const fetchArchiverStatus = async (): Promise<ArchiverStatus> => {
-  const archiverStatusResult = await rpc.get(`${RPC_URL}/v1/status`);
+  const archiverStatusResult = await rpc.get(`/v1/status`);
   if (archiverStatusResult.status !== 200) {
     console.warn("fetchArchiverStatus: Failed to fetch archiver status");
     return {} as ArchiverStatus;
@@ -160,8 +160,22 @@ export const fetchArchiverStatus = async (): Promise<ArchiverStatus> => {
   return archiverStatusResult.data;
 };
 
+export const fetchLatestTick = async (): Promise<number> => {
+  const latestTickResult = await rpc.get(`/v1/latestTick`);
+  if (latestTickResult.status !== 200) {
+    console.warn("fetchLatestTick: Failed to fetch latest tick");
+    return 0;
+  }
+  const latestTick = await latestTickResult.data.latestTick;
+  if (!latestTick) {
+    console.warn("fetchLatestTick: Invalid response data");
+    return 0;
+  }
+  return latestTick;
+};
+
 export const fetchRichList = async (page: number, pageSize: number): Promise<RichList> => {
-  const richListResult = await rpc.get(`${RPC_URL}/v1/rich-list?page=${page}&pageSize=${pageSize}`);
+  const richListResult = await rpc.get(`/v1/rich-list?page=${page}&pageSize=${pageSize}`);
   const richList = await richListResult.data;
   return richList;
 };
@@ -172,7 +186,7 @@ export const fetchTxHistory = async (
   endTick: number
 ): Promise<TxHistory> => {
   const txHistoryResult = await rpc.get(
-    `${RPC_URL}/v2/identities/${publicId}/transfers?startTick=${startTick}&endTick=${endTick}`
+    `/v2/identities/${publicId}/transfers?startTick=${startTick}&endTick=${endTick}`
   );
   const txHistory = await txHistoryResult.data;
   return txHistory.data;
@@ -184,25 +198,25 @@ export const fetchEpochTicks = async (
   pageSize: number
 ): Promise<EpochTicks> => {
   const epochTicksResult = await rpc.get(
-    `${RPC_URL}/v2/epochs/${epoch}/ticks?page=${page}&pageSize=${pageSize}`
+    `/v2/epochs/${epoch}/ticks?page=${page}&pageSize=${pageSize}`
   );
   const epochTicks = await epochTicksResult.data;
   return epochTicks.data;
 };
 
 export const fetchApprovedTx = async (tick: number): Promise<TransactionInfo[]> => {
-  const approvedTxResult = await rpc.get(`${RPC_URL}/v1/ticks/${tick}/approved-transactions`);
+  const approvedTxResult = await rpc.get(`/v1/ticks/${tick}/approved-transactions`);
   const approvedTx = await approvedTxResult.data;
   return approvedTx.approvedTransactions;
 };
 
 export const fetchTransactionInfo = async (txHash: string): Promise<TransactionInfo> => {
-  const transactionInfoResult = await rpc.get(`${RPC_URL}/v2/transactions/${txHash}`);
+  const transactionInfoResult = await rpc.get(`/v2/transactions/${txHash}`);
   const transactionInfo = await transactionInfoResult.data;
   return transactionInfo.transaction;
 };
 
 export const fetchTickEvents = async (tick: number): Promise<TickEvents> => {
-  const tickEventsResult = await rpc.post(`${API_URL}/v1/events/getTickEvents`, { tick });
+  const tickEventsResult = await axios.post(`${API_URL}/v1/events/getTickEvents`, { tick });
   return tickEventsResult.data;
 };

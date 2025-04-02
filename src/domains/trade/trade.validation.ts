@@ -1,11 +1,9 @@
 import { z } from "zod";
-import { TradeType, TradeStatus } from "@prisma/client";
 
 const createTrade = {
   body: z.object({
-    type: z.enum([TradeType.BUY, TradeType.SELL, TradeType.TRANSFER, TradeType.ISSUE]),
-    fromID: z.string(),
-    toID: z.string().optional(),
+    maker: z.string().optional(),
+    taker: z.string().optional(),
     price: z
       .string()
       .or(z.number())
@@ -21,22 +19,17 @@ const createTrade = {
       .string()
       .or(z.number())
       .transform((val) => BigInt(val))
-      .optional(),
-    status: z
-      .enum([TradeStatus.PENDING, TradeStatus.COMPLETED, TradeStatus.FAILED])
-      .default(TradeStatus.COMPLETED)
+      .optional()
   })
 };
 
 const getTrades = {
   query: z.object({
-    fromID: z.string().optional(),
-    toID: z.string().optional(),
-    type: z.enum([TradeType.BUY, TradeType.SELL, TradeType.TRANSFER, TradeType.ISSUE]).optional(),
+    maker: z.string().optional(),
+    taker: z.string().optional(),
     assetID: z.number().int().optional(),
     txHash: z.string().optional(),
     tick: z.number().int().optional(),
-    status: z.enum([TradeStatus.PENDING, TradeStatus.COMPLETED, TradeStatus.FAILED]).optional(),
     sortBy: z.string().optional(),
     limit: z.string().optional(),
     page: z.string().optional(),

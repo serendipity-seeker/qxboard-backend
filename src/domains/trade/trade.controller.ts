@@ -5,7 +5,6 @@ import catchAsync from "../../utils/catchAsync";
 import tradeService from "./trade.service";
 import { bigintConvert } from "../../utils/bigintConvert";
 import userService from "../user/user.service";
-import { TradeType } from "@prisma/client";
 
 const createTrade = catchAsync(async (req, res) => {
   // Create user if they don't exist
