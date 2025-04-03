@@ -11,7 +11,7 @@ prisma.$connect().then(() => {
   logger.info("Connected to SQL Database");
   server = http.createServer(app);
 
-  // indexer.start();
+  indexer.start();
 
   SocketService.getInstance(server);
 

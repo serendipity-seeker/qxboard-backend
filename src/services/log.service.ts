@@ -63,8 +63,8 @@ const decodeTransferAssetOwnershipLog = async (eventData: string) => {
   const values = getResponseValues(eventData);
   if (!values) return null;
 
-  const fromID = await values.getID(0);
-  const toID = await values.getID(32);
+  const maker = await values.getID(0);
+  const taker = await values.getID(32);
   const issuer = await values.getID(64);
   const amount = values.getUint64(96);
   const assetName = values.getUint64(104);
@@ -72,8 +72,8 @@ const decodeTransferAssetOwnershipLog = async (eventData: string) => {
   // const unitOfMeasurement = values.getUint64(120);
 
   return {
-    fromID,
-    toID,
+    maker,
+    taker,
     issuer,
     assetName: assetNameDecode(assetName),
     amount: Number(amount)
@@ -128,8 +128,6 @@ const decodeQXLog = async (log: TickEvents) => {
       result.push({
         tick: log.tick,
         txHash: tx.txId,
-        eventId: Number(event.header.eventId),
-        logType,
         ...qxTradeLog,
         ...transferAssetOwnershipLog
       });

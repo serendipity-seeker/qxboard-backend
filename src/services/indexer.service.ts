@@ -2,6 +2,8 @@ import fs from "fs";
 import path from "path";
 import { fetchTickEvents, fetchLatestTick } from "./rpc.service";
 import { decodeQXLog } from "./log.service";
+import prisma from "../client";
+import tradeService from "../domains/trade/trade.service";
 
 interface IndexerState {
   processedTick: number;
@@ -21,7 +23,7 @@ class QXIndexer implements Indexer {
 
   private async readState(): Promise<number> {
     try {
-      const filePath = path.join(__dirname, "state.json");
+      const filePath = path.join(__dirname, "state.log");
       if (!fs.existsSync(filePath)) {
         fs.writeFileSync(filePath, JSON.stringify({ processedTick: 0 }));
       }
@@ -35,7 +37,7 @@ class QXIndexer implements Indexer {
 
   private async writeState(state: IndexerState): Promise<void> {
     try {
-      const filePath = path.join(__dirname, "state.json");
+      const filePath = path.join(__dirname, "state.log");
       fs.writeFileSync(filePath, JSON.stringify(state));
     } catch (error) {
       console.error(`Error writing state: ${error}`);
@@ -80,7 +82,37 @@ class QXIndexer implements Indexer {
               const tickEvents = await fetchTickEvents(this.currentTick);
               const qxLogs = await decodeQXLog(tickEvents);
               console.info(`Processed logs for tick ${this.currentTick}`);
-              console.debug(JSON.stringify(qxLogs));
+              qxLogs.forEach(async (log) => {
+                let asset = await prisma.asset.findUnique({
+                  where: {
+                    name_issuer: {
+                      name: log.assetName,
+                      issuer: log.issuer
+                    }
+                  }
+                });
+
+                if (!asset) {
+                  asset = await prisma.asset.create({
+                    data: {
+                      name: log.assetName,
+                      issuer: log.issuer
+                    }
+                  });
+                }
+
+                const trade = await tradeService.createTrade({
+                  assetID: asset.id,
+                  maker: log.maker,
+                  taker: log.taker,
+                  price: log.price,
+                  amount: log.amount,
+                  tick: log.tick,
+                  txHash: log.txHash
+                });
+
+                console.log(trade);
+              });
 
               // Update state after successful processing
               await this.writeState({ processedTick: this.currentTick });
