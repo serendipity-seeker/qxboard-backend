@@ -3,6 +3,7 @@ import { Trade, Prisma } from "@prisma/client";
 import ApiError from "../../utils/ApiError";
 import prisma from "../../client";
 import { SocketService } from "../../services/socket.service";
+import { NotificationManager } from "../../services/notification.service";
 
 /**
  * Create a trade
@@ -21,12 +22,36 @@ const createTrade = async (createBody: {
 }): Promise<Trade> => {
   try {
     // Create the trade
+    if (createBody.maker) {
+      const maker = await prisma.user.findUnique({
+        where: { id: createBody.maker }
+      });
+      if (!maker)
+        await prisma.user.create({
+          data: {
+            id: createBody.maker
+          }
+        });
+    }
+
+    if (createBody.taker) {
+      const taker = await prisma.user.findUnique({
+        where: { id: createBody.taker }
+      });
+      if (!taker)
+        await prisma.user.create({
+          data: {
+            id: createBody.taker
+          }
+        });
+    }
+
     const trade = await prisma.trade.create({
       data: {
         maker: createBody.maker || "",
         taker: createBody.taker || "",
-        price: createBody.price,
-        amount: createBody.amount,
+        price: Number(createBody.price),
+        amount: Number(createBody.amount),
         tick: createBody.tick,
         assetID: createBody.assetID,
         txHash: createBody.txHash
@@ -43,6 +68,30 @@ const createTrade = async (createBody: {
     // Emit trade event via socket
     const socketService = SocketService.getInstance();
     socketService.emitToAll("trade:new", trade);
+
+    // Send notifications to maker and taker
+    if (trade.Asset && (createBody.maker || createBody.taker)) {
+      const notificationManager = NotificationManager.getInstance();
+      const assetName = trade.Asset.name;
+      const amount = Number(createBody.amount);
+      const price = Number(createBody.price);
+
+      if (createBody.maker) {
+        await notificationManager.sendNotification(
+          createBody.maker,
+          `Your sell order for ${amount} ${assetName} at ${price} QU has been executed`,
+          "Trade Executed"
+        );
+      }
+
+      if (createBody.taker) {
+        await notificationManager.sendNotification(
+          createBody.taker,
+          `Your buy order for ${amount} ${assetName} at ${price} QU has been executed`,
+          "Trade Executed"
+        );
+      }
+    }
 
     return trade;
   } catch (error) {

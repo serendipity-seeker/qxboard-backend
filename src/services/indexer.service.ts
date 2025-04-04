@@ -4,155 +4,178 @@ import { fetchTickEvents, fetchLatestTick } from "./rpc.service";
 import { decodeQXLog } from "./log.service";
 import prisma from "../client";
 import tradeService from "../domains/trade/trade.service";
+import cron from "node-cron";
+import logger from "../config/logger";
 
 interface IndexerState {
   processedTick: number;
 }
 
-interface Indexer {
-  start(): Promise<void>;
-  stop(): void;
-  getState(): Promise<IndexerState>;
-  setState(state: IndexerState): Promise<void>;
+let cronJob: cron.ScheduledTask | null = null;
+let running = false;
+let currentTick = 0;
+const stateFilePath = path.join(__dirname, "state.log");
+const cronSchedule = "*/1 * * * *"; // Run every minute by default
+
+async function readState(): Promise<number> {
+  try {
+    if (!fs.existsSync(stateFilePath)) {
+      fs.writeFileSync(stateFilePath, JSON.stringify({ processedTick: 0 }));
+    }
+    const state = JSON.parse(fs.readFileSync(stateFilePath, "utf8"));
+    return state.processedTick;
+  } catch (error) {
+    logger.error(`Error reading state: ${error}`);
+    return 0;
+  }
 }
 
-class QXIndexer implements Indexer {
-  private intervalId: NodeJS.Timeout | null = null;
-  private running: boolean = false;
-  private currentTick: number = 0;
+async function writeState(state: IndexerState): Promise<void> {
+  try {
+    fs.writeFileSync(stateFilePath, JSON.stringify(state));
+  } catch (error) {
+    logger.error(`Error writing state: ${error}`);
+  }
+}
 
-  private async readState(): Promise<number> {
-    try {
-      const filePath = path.join(__dirname, "state.log");
-      if (!fs.existsSync(filePath)) {
-        fs.writeFileSync(filePath, JSON.stringify({ processedTick: 0 }));
-      }
-      const state = JSON.parse(fs.readFileSync(filePath, "utf8"));
-      return state.processedTick;
-    } catch (error) {
-      console.error(`Error reading state: ${error}`);
-      return 0;
+export async function getState(): Promise<IndexerState> {
+  const processedTick = await readState();
+  return { processedTick };
+}
+
+export async function setState(state: IndexerState): Promise<void> {
+  await writeState(state);
+  currentTick = state.processedTick;
+}
+
+export async function runIndexer(): Promise<void> {
+  if (!running) return;
+
+  try {
+    const latestTick = await fetchLatestTick();
+
+    if (latestTick <= currentTick) {
+      logger.debug("No new ticks to process");
+      return; // Nothing new to process
     }
-  }
 
-  private async writeState(state: IndexerState): Promise<void> {
-    try {
-      const filePath = path.join(__dirname, "state.log");
-      fs.writeFileSync(filePath, JSON.stringify(state));
-    } catch (error) {
-      console.error(`Error writing state: ${error}`);
-    }
-  }
+    logger.info(`Processing ticks from ${currentTick} to ${latestTick}`);
 
-  async getState(): Promise<IndexerState> {
-    const processedTick = await this.readState();
-    return { processedTick };
-  }
+    while (currentTick < latestTick && running) {
+      try {
+        const tickEvents = await fetchTickEvents(currentTick);
+        const qxLogs = await decodeQXLog(tickEvents);
+        logger.info(`Processing ${qxLogs.length} logs for tick ${currentTick}`);
 
-  async setState(state: IndexerState): Promise<void> {
-    await this.writeState(state);
-    this.currentTick = state.processedTick;
-  }
-
-  async start(): Promise<void> {
-    if (this.running) return;
-
-    try {
-      this.running = true;
-      this.currentTick = await this.readState();
-
-      if (!this.currentTick) {
-        try {
-          this.currentTick = await fetchLatestTick();
-        } catch (error) {
-          console.error(`Error fetching latest tick: ${error}`);
-          this.currentTick = 0;
-        }
-      }
-
-      console.info(`Last processed tick: ${this.currentTick}`);
-
-      this.intervalId = setInterval(async () => {
-        try {
-          const latestTick = await fetchLatestTick();
-          console.debug(`Latest tick: ${latestTick}, Current tick: ${this.currentTick}`);
-
-          if (latestTick > this.currentTick) {
+        await Promise.all(
+          qxLogs.map(async (log) => {
             try {
-              const tickEvents = await fetchTickEvents(this.currentTick);
-              const qxLogs = await decodeQXLog(tickEvents);
-              console.info(`Processed logs for tick ${this.currentTick}`);
-              qxLogs.forEach(async (log) => {
-                let asset = await prisma.asset.findUnique({
-                  where: {
-                    name_issuer: {
-                      name: log.assetName,
-                      issuer: log.issuer
-                    }
+              let asset = await prisma.asset.findUnique({
+                where: {
+                  name_issuer: {
+                    name: log.assetName,
+                    issuer: log.issuer
                   }
-                });
-
-                if (!asset) {
-                  asset = await prisma.asset.create({
-                    data: {
-                      name: log.assetName,
-                      issuer: log.issuer
-                    }
-                  });
                 }
-
-                const trade = await tradeService.createTrade({
-                  assetID: asset.id,
-                  maker: log.maker,
-                  taker: log.taker,
-                  price: log.price,
-                  amount: log.amount,
-                  tick: log.tick,
-                  txHash: log.txHash
-                });
-
-                console.log(trade);
               });
 
-              // Update state after successful processing
-              await this.writeState({ processedTick: this.currentTick });
+              if (!asset) {
+                asset = await prisma.asset.create({
+                  data: {
+                    name: log.assetName,
+                    issuer: log.issuer
+                  }
+                });
+              }
 
-              this.currentTick++;
+              const trade = await tradeService.createTrade({
+                assetID: asset.id,
+                maker: log.maker,
+                taker: log.taker,
+                price: log.price,
+                amount: log.amount,
+                tick: log.tick,
+                txHash: log.txHash
+              });
+
+              logger.debug(`Created trade for ${log.assetName} at tick ${log.tick}`);
             } catch (error) {
-              console.error(`Error processing tick ${this.currentTick}: ${error}`);
-              // Continue with next interval without incrementing tick to retry
+              logger.error(error);
             }
-          }
-        } catch (error) {
-          console.error(`Error in indexer interval: ${error}`);
-          // The interval will continue despite errors
-        }
-      }, 500);
+          })
+        );
 
-      // Keep the process running
-      process.on("uncaughtException", (error) => {
-        console.error(`Uncaught exception: ${error}`);
-        // Don't exit the process
-      });
-    } catch (error) {
-      console.error(`Fatal error in indexer: ${error}`);
-      this.running = false;
-      // Restart the indexer after a delay
-      setTimeout(() => {
-        console.info("Restarting indexer after error...");
-        this.start();
-      }, 5000);
+        currentTick++;
+        await writeState({ processedTick: currentTick });
+      } catch (error) {
+        logger.error(`Error processing tick ${currentTick}: ${error}`);
+        break;
+      }
     }
-  }
 
-  stop(): void {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
-    this.running = false;
-    console.info("Indexer stopped");
+    logger.info(`Indexer job completed. Current tick: ${currentTick}`);
+  } catch (error) {
+    logger.error(`Error in indexer job: ${error}`);
   }
 }
 
-export const indexer = new QXIndexer();
+export async function start(): Promise<void> {
+  if (running) {
+    logger.info("Indexer already running");
+    return;
+  }
+
+  try {
+    running = true;
+    currentTick = await readState();
+
+    if (!currentTick) {
+      try {
+        currentTick = await fetchLatestTick();
+        logger.info(`Starting from latest tick: ${currentTick}`);
+      } catch (error) {
+        logger.error(`Error fetching latest tick: ${error}`);
+        currentTick = 0;
+      }
+    }
+
+    logger.info(`Indexer started. Last processed tick: ${currentTick}`);
+
+    // Schedule the cron job
+    cronJob = cron.schedule(cronSchedule, async () => {
+      try {
+        logger.info("Running scheduled indexer job");
+        await runIndexer();
+      } catch (error) {
+        logger.error(`Error in scheduled indexer job: ${error}`);
+      }
+    });
+
+    runIndexer();
+  } catch (error) {
+    logger.error(`Fatal error in indexer: ${error}`);
+    running = false;
+    // Restart the indexer after a delay
+    setTimeout(() => {
+      logger.info("Restarting indexer after error...");
+      start();
+    }, 5000);
+  }
+}
+
+export function stop(): void {
+  if (cronJob) {
+    cronJob.stop();
+    cronJob = null;
+  }
+  running = false;
+  logger.info("Indexer stopped");
+}
+
+export const indexer = {
+  start,
+  stop,
+  getState,
+  setState,
+  runIndexer
+};

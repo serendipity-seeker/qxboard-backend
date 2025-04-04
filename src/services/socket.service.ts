@@ -1,62 +1,117 @@
-import { Server as SocketServer } from "socket.io";
 import { Server as HttpServer } from "http";
+import { Server, Socket } from "socket.io";
 import logger from "../config/logger";
+import { Notification, Trade } from "@prisma/client";
 
 export class SocketService {
-  private io: SocketServer;
   private static instance: SocketService;
+  private io: Server | null = null;
+  private userSockets: Map<string, Set<string>> = new Map(); // userId -> Set of socketIds
 
-  private constructor(server: HttpServer) {
-    this.io = new SocketServer(server);
+  private constructor() {}
 
-    this.setupEventHandlers();
-    logger.info("Socket.IO server initialized");
-  }
-
-  public static getInstance(server?: HttpServer): SocketService {
-    if (!SocketService.instance && server) {
-      SocketService.instance = new SocketService(server);
+  public static getInstance(): SocketService {
+    if (!SocketService.instance) {
+      SocketService.instance = new SocketService();
     }
     return SocketService.instance;
   }
 
-  private setupEventHandlers(): void {
-    this.io.on("connection", (socket) => {
-      logger.info(`Client connected: ${socket.id}`);
+  public initialize(httpServer: HttpServer): void {
+    this.io = new Server(httpServer, {
+      cors: {
+        origin: "*", // In production, restrict this to your frontend domain
+        methods: ["GET", "POST"]
+      }
+    });
 
-      socket.on("disconnect", () => {
-        logger.info(`Client disconnected: ${socket.id}`);
-      });
+    this.io.on("connection", this.handleConnection.bind(this));
+    logger.info("Socket.IO server initialized");
+  }
 
-      // Add more event handlers as needed
+  private handleConnection(socket: Socket): void {
+    logger.info(`New socket connection: ${socket.id}`);
+
+    // Handle user authentication and subscription
+    socket.on("subscribe", (data: { userId: string }) => {
+      if (data.userId) {
+        this.subscribeUser(socket.id, data.userId);
+        logger.info(`User ${data.userId} subscribed with socket ${socket.id}`);
+        
+        // Send welcome notification
+        this.emitToUser(data.userId, "notification", {
+          id: Date.now().toString(),
+          type: "info",
+          message: "Connected to QXBoard notification service",
+          timestamp: Date.now(),
+          read: false
+        });
+      }
+    });
+
+    // Handle disconnection
+    socket.on("disconnect", () => {
+      this.handleDisconnect(socket.id);
+      logger.info(`Socket disconnected: ${socket.id}`);
     });
   }
 
-  // Method to emit events to all connected clients
-  public emitToAll(event: string, data: any): void {
-    this.io.emit(event, data);
+  private subscribeUser(socketId: string, userId: string): void {
+    if (!this.userSockets.has(userId)) {
+      this.userSockets.set(userId, new Set());
+    }
+    this.userSockets.get(userId)?.add(socketId);
   }
 
-  // Method to emit events to a specific client
-  public emitToClient(socketId: string, event: string, data: any): void {
-    this.io.to(socketId).emit(event, data);
-  }
-
-  // Method to emit events to a specific room
-  public emitToRoom(room: string, event: string, data: any): void {
-    this.io.to(room).emit(event, data);
-  }
-
-  // Method to add a client to a room
-  public addToRoom(socketId: string, room: string): void {
-    const socket = this.io.sockets.sockets.get(socketId);
-    if (socket) {
-      socket.join(room);
+  private handleDisconnect(socketId: string): void {
+    // Remove socket from all user mappings
+    for (const [userId, sockets] of this.userSockets.entries()) {
+      if (sockets.has(socketId)) {
+        sockets.delete(socketId);
+        if (sockets.size === 0) {
+          this.userSockets.delete(userId);
+        }
+      }
     }
   }
 
-  // Get the socket.io instance
-  public getIO(): SocketServer {
-    return this.io;
+  // Emit event to a specific user (all their connected sockets)
+  public emitToUser(userId: string, event: string, data: any): boolean {
+    if (!this.io) return false;
+
+    const userSocketIds = this.userSockets.get(userId);
+    if (!userSocketIds || userSocketIds.size === 0) return false;
+
+    for (const socketId of userSocketIds) {
+      this.io.to(socketId).emit(event, data);
+    }
+    return true;
+  }
+
+  // Emit event to all connected clients
+  public emitToAll(event: string, data: any): boolean {
+    if (!this.io) return false;
+    this.io.emit(event, data);
+    return true;
+  }
+
+  // Send notification to a specific user
+  public sendNotification(userId: string, notification: Notification): boolean {
+    return this.emitToUser(userId, "notification", notification);
+  }
+
+  // Broadcast trade update to all connected clients
+  public broadcastTradeUpdate(trade: Trade): boolean {
+    return this.emitToAll("trade_update", trade);
+  }
+
+  // Get connected socket count
+  public getConnectionCount(): number {
+    return this.io ? this.io.engine.clientsCount : 0;
+  }
+
+  // Get active user count (users with at least one socket)
+  public getActiveUserCount(): number {
+    return this.userSockets.size;
   }
 }

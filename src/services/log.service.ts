@@ -119,7 +119,6 @@ const decodeQXLog = async (log: TickEvents) => {
       );
       let transferAssetOwnershipLog = null;
       if (transferAssetOwnershipTxEvent) {
-        console.log(transferAssetOwnershipTxEvent.eventData);
         transferAssetOwnershipLog = await decodeTransferAssetOwnershipLog(
           transferAssetOwnershipTxEvent.eventData
         );

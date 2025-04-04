@@ -1,7 +1,7 @@
 {
-  "name": "qubic-marketplace-server",
+  "name": "qxboard-backend",
   "version": "1.0.0",
-  "description": "Qubic Marketplace Server",
+  "description": "QXBoard Backend",
   "main": "src/index.ts",
   "scripts": {
     "start": "yarn build",
@@ -29,6 +29,7 @@
     "@types/http-status": "^1.1.2",
     "@types/morgan": "^1.9.3",
     "@types/node": "^18.11.13",
+    "@types/node-cron": "^3.0.11",
     "@types/passport": "^1.0.11",
     "@types/passport-jwt": "^3.0.7",
     "@types/supertest": "^2.0.12",
@@ -64,6 +65,7 @@
     "http-status": "^1.5.3",
     "moment": "^2.29.4",
     "morgan": "^1.10.0",
+    "node-cron": "^3.0.3",
     "nodemailer": "^6.8.0",
     "passport": "^0.6.0",
     "passport-jwt": "^4.0.0",

@@ -22,8 +22,8 @@ model Trade {
   id        Int      @id @default(autoincrement())
   maker     String // Sender's address
   taker     String // Recipient's address
-  price     BigInt // Price of the asset
-  amount    BigInt // Transaction amount
+  price     Int // Price of the asset
+  amount    Int // Transaction amount
   tick      Int // tick when transaction occurred
   assetID   Int // Asset's unique identifier
   txHash    String // Unique transaction identifier

@@ -28,10 +28,26 @@ app.use(cors());
 app.options("*", cors());
 
 if (config.env === "production") {
-  app.use("/api/v1/auth", authLimiter);
+  app.use("/v1/auth", authLimiter);
 }
 
-app.use("/api/v1", routes);
+// Add a health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
+// Add an endpoint to manually trigger the indexer
+app.post('/v1/admin/indexer/run', async (req, res) => {
+  try {
+    const { runIndexer } = await import('./services/indexer.service');
+    await runIndexer();
+    res.status(200).json({ message: 'Indexer job triggered successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to trigger indexer job', error: String(error) });
+  }
+});
+
+app.use("/v1", routes);
 
 app.use(errorConverter);
 app.use(errorHandler);
