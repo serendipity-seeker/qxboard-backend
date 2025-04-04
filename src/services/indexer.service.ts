@@ -4,6 +4,8 @@ import { fetchTickEvents, fetchLatestTick } from "./rpc.service";
 import { decodeQXLog } from "./log.service";
 import prisma from "../client";
 import tradeService from "../domains/trade/trade.service";
+import assetsService from "../domains/assets/assets.service";
+import { NotificationManager } from "../services/notification.service";
 import cron from "node-cron";
 import logger from "../config/logger";
 
@@ -56,17 +58,21 @@ async function fetchTickEventsWithRetry(tick: number, retries = 0): Promise<any>
   } catch (error: any) {
     // Check if it's a rate limit error (429)
     if (error.response && error.response.status === 429 && retries < MAX_RETRIES) {
-      const retryAfter = error.response.headers['retry-after'] 
-        ? parseInt(error.response.headers['retry-after']) * 1000 
+      const retryAfter = error.response.headers["retry-after"]
+        ? parseInt(error.response.headers["retry-after"]) * 1000
         : RETRY_DELAY;
-      
-      logger.warn(`Rate limited when fetching tick ${tick}. Retrying after ${retryAfter}ms (Attempt ${retries + 1}/${MAX_RETRIES})`);
-      
+
+      logger.warn(
+        `Rate limited when fetching tick ${tick}. Retrying after ${retryAfter}ms (Attempt ${
+          retries + 1
+        }/${MAX_RETRIES})`
+      );
+
       // Wait for the specified time before retrying
-      await new Promise(resolve => setTimeout(resolve, retryAfter));
+      await new Promise((resolve) => setTimeout(resolve, retryAfter));
       return fetchTickEventsWithRetry(tick, retries + 1);
     }
-    
+
     // If it's not a rate limit error or we've exceeded retries, rethrow
     throw error;
   }
@@ -93,38 +99,52 @@ export async function runIndexer(): Promise<void> {
 
         await Promise.all(
           qxLogs.map(async (log) => {
-            try {
-              let asset = await prisma.asset.findUnique({
-                where: {
-                  name_issuer: {
-                    name: log.assetName,
-                    issuer: log.issuer
-                  }
-                }
-              });
+            if (log.type === "asset_issuance") {
+              let asset = await assetsService.getAssetByNameAndIssuer(log.assetName, log.issuer);
 
               if (!asset) {
-                asset = await prisma.asset.create({
-                  data: {
+                asset = await assetsService.createAsset({
+                  name: log.assetName,
+                  issuer: log.issuer
+                });
+
+                await NotificationManager.getInstance().sendNotification(
+                  "SYSTEM",
+                  `New asset ${log.assetName} has been issued`,
+                  "Asset Issuance"
+                );
+
+                await NotificationManager.getInstance().sendSystemNotification(
+                  `New asset ${log.assetName} has been issued`,
+                  "Asset Issuance"
+                );
+              }
+            }
+
+            if (log.type === "trade") {
+              try {
+                let asset = await assetsService.getAssetByNameAndIssuer(log.assetName, log.issuer);
+                if (!asset) {
+                  asset = await assetsService.createAsset({
                     name: log.assetName,
                     issuer: log.issuer
-                  }
+                  });
+                }
+
+                const trade = await tradeService.createTrade({
+                  assetID: asset.id,
+                  maker: log.maker,
+                  taker: log.taker,
+                  price: log.price,
+                  amount: log.amount,
+                  tick: log.tick,
+                  txHash: log.txHash
                 });
+
+                logger.debug(`Created trade for ${log.assetName} at tick ${log.tick}`);
+              } catch (error) {
+                logger.error(error);
               }
-
-              const trade = await tradeService.createTrade({
-                assetID: asset.id,
-                maker: log.maker,
-                taker: log.taker,
-                price: log.price,
-                amount: log.amount,
-                tick: log.tick,
-                txHash: log.txHash
-              });
-
-              logger.debug(`Created trade for ${log.assetName} at tick ${log.tick}`);
-            } catch (error) {
-              logger.error(error);
             }
           })
         );

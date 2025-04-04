@@ -5,6 +5,7 @@ import tradeRoute from "../../domains/trade/trade.route";
 import notificationRoute from "../../domains/notification/notification.route";
 import userRoute from "../../domains/user/user.route";
 import socketRoute from "../../domains/socket/socket.route";
+import assetRoute from "../../domains/assets/assets.route";
 
 const router = express.Router();
 
@@ -28,6 +29,10 @@ const defaultRoutes = [
   {
     path: "/socket",
     route: socketRoute
+  },
+  {
+    path: "/assets",
+    route: assetRoute
   }
 ];
 

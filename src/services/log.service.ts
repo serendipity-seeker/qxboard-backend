@@ -33,6 +33,10 @@ const checkSCLog = (event: IEvent) => {
   return result;
 };
 
+const checkAssetIssuance = (event: IEvent) => {
+  return event.eventType === EventType.ASSET_ISSUANCE;
+};
+
 const decodeLogHeader = (eventData: string) => {
   const eventDataArray = base64ToUint8Array(eventData);
   const dataView = new DataView(eventDataArray.buffer);
@@ -107,7 +111,19 @@ const decodeQXLog = async (log: TickEvents) => {
   for (const tx of log.txEvents) {
     for (const event of tx.events) {
       const isSCLog = checkSCLog(event);
-      if (!isSCLog) continue;
+      const isAssetIssuance = checkAssetIssuance(event);
+      if (!isSCLog && !isAssetIssuance) continue;
+
+      if (isAssetIssuance) {
+        const assetIssuanceLog = await decodeIssueAssetLog(event.eventData);
+        result.push({
+          type: "asset_issuance",
+          tick: log.tick,
+          txHash: tx.txId,
+          ...assetIssuanceLog
+        });
+        continue;
+      }
 
       const { contractIdx, logType } = decodeLogHeader(event.eventData);
       if (contractIdx !== CONTRACT_INDEX) continue;
@@ -125,6 +141,7 @@ const decodeQXLog = async (log: TickEvents) => {
       }
 
       result.push({
+        type: "trade",
         tick: log.tick,
         txHash: tx.txId,
         ...qxTradeLog,
