@@ -38,14 +38,14 @@ export class SocketService {
         this.subscribeUser(socket.id, data.userId);
         logger.info(`User ${data.userId} subscribed with socket ${socket.id}`);
         
-        // Send welcome notification
-        this.emitToUser(data.userId, "notification", {
-          id: Date.now().toString(),
-          type: "info",
-          message: "Connected to QXBoard notification service",
-          timestamp: Date.now(),
-          read: false
-        });
+        // // Send welcome notification
+        // this.emitToUser(data.userId, "notification", {
+        //   id: Date.now().toString(),
+        //   type: "info",
+        //   message: "Connected to QXBoard notification service",
+        //   timestamp: Date.now(),
+        //   read: false
+        // });
       }
     });
 

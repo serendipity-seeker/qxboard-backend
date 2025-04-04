@@ -15,7 +15,9 @@ let cronJob: cron.ScheduledTask | null = null;
 let running = false;
 let currentTick = 0;
 const stateFilePath = path.join(__dirname, "state.log");
-const cronSchedule = "*/1 * * * *"; // Run every minute by default
+const cronSchedule = "*/10 * * * * *"; // Run every 10 seconds
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 3000; // 3 seconds
 
 async function readState(): Promise<number> {
   try {
@@ -48,6 +50,28 @@ export async function setState(state: IndexerState): Promise<void> {
   currentTick = state.processedTick;
 }
 
+async function fetchTickEventsWithRetry(tick: number, retries = 0): Promise<any> {
+  try {
+    return await fetchTickEvents(tick);
+  } catch (error: any) {
+    // Check if it's a rate limit error (429)
+    if (error.response && error.response.status === 429 && retries < MAX_RETRIES) {
+      const retryAfter = error.response.headers['retry-after'] 
+        ? parseInt(error.response.headers['retry-after']) * 1000 
+        : RETRY_DELAY;
+      
+      logger.warn(`Rate limited when fetching tick ${tick}. Retrying after ${retryAfter}ms (Attempt ${retries + 1}/${MAX_RETRIES})`);
+      
+      // Wait for the specified time before retrying
+      await new Promise(resolve => setTimeout(resolve, retryAfter));
+      return fetchTickEventsWithRetry(tick, retries + 1);
+    }
+    
+    // If it's not a rate limit error or we've exceeded retries, rethrow
+    throw error;
+  }
+}
+
 export async function runIndexer(): Promise<void> {
   if (!running) return;
 
@@ -63,7 +87,7 @@ export async function runIndexer(): Promise<void> {
 
     while (currentTick < latestTick && running) {
       try {
-        const tickEvents = await fetchTickEvents(currentTick);
+        const tickEvents = await fetchTickEventsWithRetry(currentTick);
         const qxLogs = await decodeQXLog(tickEvents);
         logger.info(`Processing ${qxLogs.length} logs for tick ${currentTick}`);
 
@@ -142,16 +166,7 @@ export async function start(): Promise<void> {
     logger.info(`Indexer started. Last processed tick: ${currentTick}`);
 
     // Schedule the cron job
-    cronJob = cron.schedule(cronSchedule, async () => {
-      try {
-        logger.info("Running scheduled indexer job");
-        await runIndexer();
-      } catch (error) {
-        logger.error(`Error in scheduled indexer job: ${error}`);
-      }
-    });
-
-    runIndexer();
+    cronJob = cron.schedule(cronSchedule, runIndexer);
   } catch (error) {
     logger.error(`Fatal error in indexer: ${error}`);
     running = false;

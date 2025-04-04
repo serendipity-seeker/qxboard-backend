@@ -84,13 +84,14 @@ const createTrade = async (createBody: {
         );
       }
 
-      if (createBody.taker) {
-        await notificationManager.sendNotification(
-          createBody.taker,
-          `Your buy order for ${amount} ${assetName} at ${price} QU has been executed`,
-          "Trade Executed"
-        );
-      }
+      // Dont send notifications to taker for now
+      // if (createBody.taker) {
+      //   await notificationManager.sendNotification(
+      //     createBody.taker,
+      //     `Your buy order for ${amount} ${assetName} at ${price} QU has been executed`,
+      //     "Trade Executed"
+      //   );
+      // }
     }
 
     return trade;
